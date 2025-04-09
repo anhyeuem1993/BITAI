@@ -1,53 +1,43 @@
 import streamlit as st
-import yfinance as yf
 import pandas as pd
+import yfinance as yf
+from datetime import datetime, timedelta
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
-from sklearn.model_selection import train_test_split
 
-st.title("AI dự đoán xu hướng BTC")
+st.set_page_config(page_title="AI Dự đoán BTC", layout="wide")
 
-# Tải dữ liệu
 @st.cache_data
 def load_data():
-    data = yf.download("BTC-USD", start="2020-01-01")
-    data = data[['Open', 'High', 'Low', 'Close', 'Volume']]
-    data['Tomorrow'] = data['Close'].shift(-1)
-    data.dropna(inplace=True)
-    data.reset_index(drop=True, inplace=True)
-    data['Target'] = (data['Tomorrow'] > data['Close']).astype(int)
-    return data
+    today = datetime.today()
+    start = today - timedelta(days=60)
+    df = yf.download('BTC-USD', start=start.strftime('%Y-%m-%d'), end=today.strftime('%Y-%m-%d'))
+    df = df[['Open', 'High', 'Low', 'Close', 'Volume']]
+    df.dropna(inplace=True)
+    df['Tomorrow Close'] = df['Close'].shift(-1)
+    df['Target'] = (df['Tomorrow Close'] > df['Close']).astype(int)
+    df.dropna(inplace=True)
+    return df
 
 data = load_data()
 
-# Hiển thị dữ liệu
-if st.checkbox("Hiển thị dữ liệu"):
-    st.dataframe(data.tail())
+st.subheader("Dữ liệu giá Bitcoin")
+st.dataframe(data.tail())
 
-# Chọn features và target
+# Train model
 features = ['Open', 'High', 'Low', 'Close', 'Volume']
 X = data[features]
 y = data['Target']
 
-# Tách train/test
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
-
-# Huấn luyện mô hình
 model = RandomForestClassifier(n_estimators=100, random_state=42)
-model.fit(X_train, y_train)
+model.fit(X, y)
 
-# Dự đoán
-predictions = model.predict(X_test)
-accuracy = accuracy_score(y_test, predictions)
-
-st.subheader("Kết quả dự đoán")
-st.write(f"Độ chính xác: {accuracy * 100:.2f}%")
-
-# Dự đoán xu hướng hôm nay
+# Dự đoán hôm nay
 latest_data = data[features].iloc[-1:]
-prediction_today = model.predict(latest_data)[0]
+prediction = model.predict(latest_data)[0]
+prob = model.predict_proba(latest_data)[0]
 
-if prediction_today == 1:
-    st.success("Dự đoán: Giá BTC sẽ TĂNG vào ngày mai.")
+st.subheader("Dự đoán xu hướng hôm nay:")
+if prediction == 1:
+    st.success(f"AI dự đoán: Tăng (xác suất {prob[1]*100:.2f}%)")
 else:
-    st.error("Dự đoán: Giá BTC sẽ GIẢM vào ngày mai.")
+    st.error(f"AI dự đoán: Giảm (xác suất {prob[0]*100:.2f}%)")
